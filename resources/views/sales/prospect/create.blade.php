@@ -3,7 +3,7 @@
 @section('content')
 <div class="p-3">
 
-    <!-- <h6 class="mb-3">Tambah Prospek</h6> -->
+    <h6 class="mb-3">Tambah Prospek</h6>
 
     <form method="POST" action="/prospect/store" enctype="multipart/form-data" id="prospect-form">
         @csrf
@@ -32,31 +32,26 @@
 
         <div class="d-flex gap-2">
             <button type="submit" class="btn btn-primary flex-fill">💾 Simpan</button>
-            <a href="/prospect" class="btn btn-secondary flex-fill">✖ Batal</a>
+            <a href="/prospect" class="btn btn-secondary flex-fill" id="cancel-btn">✖ Batal</a>
         </div>
     </form>
-
 </div>
 
-<!-- MODAL FULLSCREEN CAMERA -->
+<!-- MODAL CAMERA -->
 <div id="camera-modal" style="display:none; position:fixed; inset:0; background:#000; z-index:1000; flex-direction:column; align-items:center; justify-content:flex-end; padding-bottom:30px;">
     <video id="cam-video" autoplay playsinline style="width:100%; height:100%; object-fit:cover; position:absolute; top:0; left:0;"></video>
 
     <div style="position:relative; width:100%; display:flex; justify-content:center; align-items:center; z-index:10; gap:10px;">
-
-        <!-- Switch camera di kiri tombol capture -->
         <button id="switch-camera" style="width:50px; height:50px; border:none; background:none; color:white; font-size:28px;">🔄</button>
-
-        <!-- Capture -->
         <button id="take-photo" style="width:70px; height:70px; border-radius:50%; background:white; border:none;"></button>
-
-        <!-- Mini preview -->
         <div id="mini-preview" style="display:flex; gap:5px; max-width:150px;"></div>
-
-        <!-- Close modal -->
         <button id="close-camera" style="position:absolute; top:20px; left:20px; width:50px; height:50px; border-radius:50%; background:rgba(0,0,0,0.3); border:none; color:white; font-size:24px;">✖</button>
     </div>
 </div>
+
+<!-- SweetAlert2 -->
+<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+
 @endsection
 
 @section('scripts')
@@ -66,7 +61,7 @@ function getLocation() {
     if(navigator.geolocation){
         navigator.geolocation.getCurrentPosition(function(pos){
             if(pos.coords.accuracy > 50){
-                alert("GPS kurang akurat, aktifkan lokasi lebih presisi");
+                Swal.fire('GPS kurang akurat', 'Coba aktifkan lokasi lebih presisi', 'warning');
                 return;
             }
             document.getElementById('lat').value = pos.coords.latitude;
@@ -74,7 +69,7 @@ function getLocation() {
             document.getElementById('gps-info').innerText = "Lokasi berhasil diambil ✔";
         });
     } else {
-        alert("Browser tidak mendukung GPS");
+        Swal.fire('Browser tidak mendukung GPS', '', 'error');
     }
 }
 
@@ -86,10 +81,10 @@ let video = document.getElementById('cam-video');
 let takePhotoBtn = document.getElementById('take-photo');
 let switchBtn = document.getElementById('switch-camera');
 let miniPreview = document.getElementById('mini-preview');
-
+let formPreview = document.getElementById('photo-preview');
+let photos = [];
 let currentStream;
 let usingFrontCamera = false;
-let photos = [];
 
 // Open modal
 openCameraBtn.addEventListener('click', async () => {
@@ -103,115 +98,94 @@ closeCameraBtn.addEventListener('click', () => {
     cameraModal.style.display = 'none';
 });
 
-// Start camera
+// Start/Stop camera
 async function startCamera() {
-    if(currentStream){
-        currentStream.getTracks().forEach(track => track.stop());
-    }
-
-    let constraints = { video: { facingMode: usingFrontCamera ? 'user' : 'environment' }, audio:false };
-
+    if(currentStream) currentStream.getTracks().forEach(t => t.stop());
     try {
-        currentStream = await navigator.mediaDevices.getUserMedia(constraints);
+        currentStream = await navigator.mediaDevices.getUserMedia({video:{facingMode: usingFrontCamera?'user':'environment'}, audio:false});
         video.srcObject = currentStream;
-    } catch(e){
-        alert('Tidak bisa akses kamera: ' + e.message);
-    }
+    } catch(e){ Swal.fire('Error Kamera', e.message, 'error'); }
 }
-
-// Stop camera
-function stopCamera(){
-    if(currentStream){
-        currentStream.getTracks().forEach(track => track.stop());
-    }
-}
-
-// Switch camera
-switchBtn.addEventListener('click', async () => {
-    usingFrontCamera = !usingFrontCamera;
-    await startCamera();
-});
+function stopCamera(){ if(currentStream) currentStream.getTracks().forEach(t=>t.stop()); }
+switchBtn.addEventListener('click', ()=>{ usingFrontCamera=!usingFrontCamera; startCamera(); });
 
 // Ambil foto
-takePhotoBtn.addEventListener('click', () => {
-    if(photos.length >= 3){
-        alert('Maksimal 3 foto');
-        return;
-    }
+takePhotoBtn.addEventListener('click', ()=>{
+    if(photos.length>=3){ Swal.fire('Maksimal 3 foto'); return; }
 
-    let canvas = document.createElement('canvas');
-    canvas.width = video.videoWidth;
-    canvas.height = video.videoHeight;
+    let canvas=document.createElement('canvas');
+    canvas.width=video.videoWidth; canvas.height=video.videoHeight;
     canvas.getContext('2d').drawImage(video,0,0,canvas.width,canvas.height);
-
-    let dataUrl = canvas.toDataURL('image/jpeg',0.8);
+    let dataUrl=canvas.toDataURL('image/jpeg',0.8);
     photos.push(dataUrl);
 
-    // Preview utama di form
-    let formPreview = document.getElementById('photo-preview');
-    let img = document.createElement('img');
-    img.src = dataUrl;
-    img.style.width = '80px';
-    img.style.height = '80px';
-    img.style.objectFit = 'cover';
-    img.style.marginRight = '5px';
-    img.style.marginBottom = '5px';
-    img.classList.add('rounded');
-    formPreview.appendChild(img);
+    // Preview form utama
+    let imgDiv=document.createElement('div'); imgDiv.style.position='relative';
+    let img=document.createElement('img'); img.src=dataUrl;
+    img.style.width='80px'; img.style.height='80px'; img.style.objectFit='cover';
+    img.style.margin='5px'; img.classList.add('rounded');
+    imgDiv.appendChild(img);
+
+    // Tombol hapus per foto
+    let delBtn=document.createElement('button'); delBtn.innerText='✖';
+    delBtn.style.position='absolute'; delBtn.style.top='0'; delBtn.style.right='0';
+    delBtn.style.background='rgba(255,0,0,0.7)'; delBtn.style.color='white';
+    delBtn.style.border='none'; delBtn.style.borderRadius='0 6px 0 6px';
+    delBtn.style.fontSize='12px'; delBtn.style.cursor='pointer';
+    delBtn.addEventListener('click', ()=>{
+        let index=photos.indexOf(dataUrl); if(index>-1) photos.splice(index,1);
+        formPreview.removeChild(imgDiv);
+        document.querySelectorAll("input[name='photos[]']").forEach(el=>{if(el.value===dataUrl) el.remove();});
+        takePhotoBtn.disabled=false;
+    });
+    imgDiv.appendChild(delBtn);
+    formPreview.appendChild(imgDiv);
 
     // Hidden input
-    let input = document.createElement('input');
-    input.type='hidden';
-    input.name='photos[]';
-    input.value=dataUrl;
+    let input=document.createElement('input'); input.type='hidden'; input.name='photos[]'; input.value=dataUrl;
     document.getElementById('prospect-form').appendChild(input);
 
-    // Mini preview di modal
-    let mini = document.createElement('div');
-    mini.style.position='relative';
-    mini.style.width='50px';
-    mini.style.height='50px';
-    mini.style.flex='none';
-    mini.style.borderRadius='6px';
-    mini.style.overflow='hidden';
-
-    let miniImg = document.createElement('img');
-    miniImg.src = dataUrl;
-    miniImg.style.width='100%';
-    miniImg.style.height='100%';
-    miniImg.style.objectFit='cover';
+    // Mini preview modal
+    let mini=document.createElement('div'); mini.style.position='relative'; mini.style.width='50px'; mini.style.height='50px'; mini.style.flex='none'; mini.style.borderRadius='6px'; mini.style.overflow='hidden';
+    let miniImg=document.createElement('img'); miniImg.src=dataUrl; miniImg.style.width='100%'; miniImg.style.height='100%'; miniImg.style.objectFit='cover';
     mini.appendChild(miniImg);
-
-    // Tombol hapus mini
-    let delBtn = document.createElement('button');
-    delBtn.innerText = '✖';
-    delBtn.style.position='absolute';
-    delBtn.style.top='0';
-    delBtn.style.right='0';
-    delBtn.style.background='rgba(255,0,0,0.7)';
-    delBtn.style.color='white';
-    delBtn.style.border='none';
-    delBtn.style.borderRadius='0 6px 0 6px';
-    delBtn.style.fontSize='12px';
-    delBtn.style.padding='0 2px';
-    delBtn.style.cursor='pointer';
-    delBtn.addEventListener('click', ()=>{
-        let index = photos.indexOf(dataUrl);
-        if(index > -1) photos.splice(index,1);
-        miniPreview.removeChild(mini);
-        formPreview.removeChild(img);
-        document.querySelectorAll("input[name='photos[]']").forEach(el=>{
-            if(el.value===dataUrl) el.remove();
-        });
-        takePhotoBtn.disabled = false;
-    });
-
-    mini.appendChild(delBtn);
     miniPreview.appendChild(mini);
 
-    // Disable capture jika sudah max
-    if(photos.length >= 3){
-        takePhotoBtn.disabled = true;
+    if(photos.length>=3) takePhotoBtn.disabled=true;
+});
+
+// ===== WARNING DATA HILANG DENGAN SWEETALERT =====
+let form=document.getElementById('prospect-form');
+let formChanged=false;
+form.addEventListener('change',()=>{ formChanged=true; });
+
+window.addEventListener('beforeunload', function(e){
+    if(formChanged){
+        Swal.fire({
+            icon:'warning',
+            title:'Data akan hilang',
+            text:'Jika halaman ditutup / di refresh, data yang belum disimpan akan hilang',
+            timer:5000,
+            timerProgressBar:true,
+            showConfirmButton:false
+        });
+        e.preventDefault();
+        e.returnValue='';
+    }
+});
+
+// Juga tombol batal
+document.getElementById('cancel-btn').addEventListener('click', function(e){
+    if(formChanged){
+        e.preventDefault();
+        Swal.fire({
+            icon:'warning',
+            title:'Data akan hilang',
+            text:'Jika batal, data yang belum disimpan akan hilang',
+            timer:5000,
+            timerProgressBar:true,
+            showConfirmButton:false
+        });
     }
 });
 </script>

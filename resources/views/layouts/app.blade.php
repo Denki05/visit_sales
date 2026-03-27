@@ -114,8 +114,10 @@
 
 </div>
 
-<!-- FLOATING BUTTON -->
+{{-- FLOATING BUTTON --}}
+@if(request()->is('prospect'))
 <a href="/prospect/create" class="fab">+</a>
+@endif
 
 <!-- BOTTOM NAV -->
 <div class="bottom-nav">

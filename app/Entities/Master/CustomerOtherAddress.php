@@ -181,4 +181,13 @@ class CustomerOtherAddress extends Model
 
         return $customer->status == Customer::STATUS['ACTIVE'];
     }
+
+    public function photos()
+    {
+        return $this->hasMany(
+            \App\Entities\Master\CustomerPhoto::class,
+            'customer_other_address_id',
+            'id'
+        );
+    }
 }

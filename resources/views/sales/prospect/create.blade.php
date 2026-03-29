@@ -24,6 +24,11 @@
 
         <input type="hidden" name="gps_latitude" id="lat">
         <input type="hidden" name="gps_longitude" id="lng">
+        
+        <input type="hidden" name="text_provinsi" id="provinsi">
+        <input type="hidden" name="text_kota" id="kota">
+        <input type="hidden" name="text_kecamatan" id="kecamatan">
+        <input type="hidden" name="text_kelurahan" id="kelurahan">
 
         <div class="mb-3">
             <button type="button" onclick="getLocation()" class="btn btn-outline-primary w-100">📍 Ambil Lokasi</button>
@@ -58,19 +63,72 @@
 <script>
 // ===== GPS =====
 function getLocation() {
-    if(navigator.geolocation){
-        navigator.geolocation.getCurrentPosition(function(pos){
-            if(pos.coords.accuracy > 50){
-                Swal.fire('GPS kurang akurat', 'Coba aktifkan lokasi lebih presisi', 'warning');
-                return;
-            }
-            document.getElementById('lat').value = pos.coords.latitude;
-            document.getElementById('lng').value = pos.coords.longitude;
-            document.getElementById('gps-info').innerText = "Lokasi berhasil diambil ✔";
-        });
-    } else {
+    if (!navigator.geolocation) {
         Swal.fire('Browser tidak mendukung GPS', '', 'error');
+        return;
     }
+
+    navigator.geolocation.getCurrentPosition(
+        function(pos) {
+
+            let lat = pos.coords.latitude;
+            let lng = pos.coords.longitude;
+            let acc = pos.coords.accuracy;
+
+            // 🔥 Lebih fleksibel (jangan terlalu ketat)
+            if (acc > 150) {
+                Swal.fire('GPS kurang akurat', 'Akurasi: ' + Math.round(acc) + ' meter', 'warning');
+            }
+
+            document.getElementById('lat').value = lat;
+            document.getElementById('lng').value = lng;
+
+            document.getElementById('gps-info').innerText =
+                "✔ Lokasi diambil (Akurasi: " + Math.round(acc) + "m)";
+
+            // 🔥 AUTO ISI ALAMAT
+            getAddress(lat, lng);
+
+        },
+        function(err) {
+            Swal.fire('Gagal ambil lokasi', err.message, 'error');
+        },
+        {
+            enableHighAccuracy: true,
+            timeout: 15000,
+            maximumAge: 0
+        }
+    );
+}
+
+function getAddress(lat, lng) {
+
+    fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}`)
+    .then(res => res.json())
+    .then(data => {
+
+        if (!data.address) return;
+
+        let addr = data.address;
+
+        // Mapping (Indonesia)
+        let provinsi = addr.state || addr.region || '';
+        let kota = addr.city || addr.county || addr.town || '';
+        let kecamatan = addr.suburb || addr.city_district || '';
+        let kelurahan = addr.village || addr.neighbourhood || '';
+
+        // 🔥 SET KE HIDDEN FIELD
+        document.getElementById('provinsi').value = provinsi;
+        document.getElementById('kota').value = kota;
+        document.getElementById('kecamatan').value = kecamatan;
+        document.getElementById('kelurahan').value = kelurahan;
+
+        console.log('Alamat:', provinsi, kota, kecamatan, kelurahan);
+
+    })
+    .catch(err => {
+        console.log('Gagal ambil alamat', err);
+    });
 }
 
 // ===== CAMERA MODAL =====
@@ -154,38 +212,45 @@ takePhotoBtn.addEventListener('click', ()=>{
     if(photos.length>=3) takePhotoBtn.disabled=true;
 });
 
-// ===== WARNING DATA HILANG DENGAN SWEETALERT =====
-let form=document.getElementById('prospect-form');
-let formChanged=false;
-form.addEventListener('change',()=>{ formChanged=true; });
+let isSubmitting = false;
 
-window.addEventListener('beforeunload', function(e){
-    if(formChanged){
-        Swal.fire({
-            icon:'warning',
-            title:'Data akan hilang',
-            text:'Jika halaman ditutup / di refresh, data yang belum disimpan akan hilang',
-            timer:5000,
-            timerProgressBar:true,
-            showConfirmButton:false
-        });
+form.addEventListener('submit', function () {
+    isSubmitting = true;
+});
+
+// ===== WARNING DATA HILANG (STABIL) =====
+let form = document.getElementById('prospect-form');
+let formChanged = false;
+
+// detect perubahan
+form.addEventListener('change', () => {
+    formChanged = true;
+});
+
+// 🔥 tombol batal (SweetAlert)
+document.getElementById('cancel-btn').addEventListener('click', function (e) {
+    if (formChanged) {
         e.preventDefault();
-        e.returnValue='';
+
+        Swal.fire({
+            icon: 'warning',
+            title: 'Data akan hilang',
+            text: 'Yakin ingin keluar?',
+            showCancelButton: true,
+            confirmButtonText: 'Ya, keluar',
+            cancelButtonText: 'Batal'
+        }).then((result) => {
+            if (result.isConfirmed) {
+                window.location.href = '/prospect';
+            }
+        });
     }
 });
 
-// Juga tombol batal
-document.getElementById('cancel-btn').addEventListener('click', function(e){
-    if(formChanged){
+window.addEventListener('beforeunload', function (e) {
+    if (formChanged && !isSubmitting) {
         e.preventDefault();
-        Swal.fire({
-            icon:'warning',
-            title:'Data akan hilang',
-            text:'Jika batal, data yang belum disimpan akan hilang',
-            timer:5000,
-            timerProgressBar:true,
-            showConfirmButton:false
-        });
+        e.returnValue = '';
     }
 });
 </script>

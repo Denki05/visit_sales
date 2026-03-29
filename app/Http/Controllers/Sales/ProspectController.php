@@ -15,9 +15,13 @@ use DB;
 
 class ProspectController extends Controller
 {
-    public function index()
+    public function index(Request $request)
     {
-        $data = Customer::whereDate('created_at', Carbon::today())
+        $startDate = Carbon::now()->startOfMonth()->addDays(27); // tanggal 28
+        $endDate = Carbon::now();
+
+        $data = CustomerOtherAddress::with('photos')
+            ->whereBetween('created_at', [$startDate, $endDate])
             ->latest()
             ->get();
 
@@ -31,10 +35,11 @@ class ProspectController extends Controller
 
     public function store(Request $request)
     {
+        // dd($request->all());
         // ✅ VALIDASI
         $request->validate([
             'name' => 'required',
-            'photos.*' => 'image|mimes:jpg,jpeg,png|max:2048'
+            // 'photos.*' => 'image|mimes:jpg,jpeg,png|max:2048'
         ]);
 
         DB::beginTransaction();
@@ -52,6 +57,10 @@ class ProspectController extends Controller
                 'count_member' => 1,
                 'gps_latitude' => $request->gps_latitude,
                 'gps_longitude' => $request->gps_longitude,
+                'text_provinsi' => $request->text_provinsi,
+                'text_kota' => $request->text_kota,
+                'text_kecamatan' => $request->text_kecamatan,
+                'text_kelurahan' => $request->text_kelurahan,
                 'status' => 1,
                 'existence' => 1,
                 'created_by' => $user->id,
@@ -68,52 +77,60 @@ class ProspectController extends Controller
                 'address' => $request->address,
                 'gps_latitude' => $request->gps_latitude,
                 'gps_longitude' => $request->gps_longitude,
+                'text_provinsi' => $request->text_provinsi,
+                'text_kota' => $request->text_kota,
+                'text_kecamatan' => $request->text_kecamatan,
+                'text_kelurahan' => $request->text_kelurahan,
                 'status' => 1,
             ]);
 
             // ✅ HANDLE UPLOAD FOTO
-            if ($request->hasFile('photos')) {
+            if ($request->photos) {
 
                 $path = public_path('uploads/customer');
 
-                // Pastikan folder ada
                 if (!file_exists($path)) {
                     mkdir($path, 0777, true);
                 }
 
-                foreach ($request->file('photos') as $photo) {
+                foreach ($request->photos as $base64) {
 
-                    // Skip kalau file tidak valid
-                    if (!$photo->isValid()) continue;
+                    // ambil extension
+                    preg_match('/data:image\/(\w+);base64,/', $base64, $type);
+                    $ext = $type[1] ?? 'jpg';
 
-                    // Generate nama file unik
-                    $filename = uniqid().'_'.Str::random(5).'.'.$photo->getClientOriginalExtension();
+                    // hapus prefix base64
+                    $base64 = preg_replace('/^data:image\/\w+;base64,/', '', $base64);
+                    $base64 = str_replace(' ', '+', $base64);
 
-                    // Pindahkan file
-                    $image = Image::make($photo->getRealPath());
+                    $imageData = base64_decode($base64);
 
-                    // TEXT WATERMARK
+                    $filename = uniqid().'_'.Str::random(5).'.'.$ext;
+
+                    // simpan file sementara
+                    file_put_contents($path.'/'.$filename, $imageData);
+
+                    // load pakai Intervention Image
+                    $image = Image::make($path.'/'.$filename);
+
+                    // watermark
                     $text = now()->format('Y-m-d H:i') . "\n" .
                             "Lat: ".$request->gps_latitude."\n" .
                             "Lng: ".$request->gps_longitude;
 
-                    $fontPath = public_path('fonts/ARIALBD.ttf'); // gunakan font TTF bold
-
-                    $image->text($text, 10, $image->height() - 10, function($font) use ($fontPath, $image) {
-                        $font->file($fontPath);        // font bold
-                        $font->size(24);                // ukuran font lebih besar
-                        $font->color('#ffffff');        // warna putih
-                        $font->align('left');           // rata kiri
-                        $font->valign('bottom');        // rata bawah
-                        $font->angle(0);                // rotasi 0°
+                    $image->text($text, 10, $image->height() - 10, function($font) {
+                        $font->size(20);
+                        $font->color('#ffffff');
+                        $font->align('left');
+                        $font->valign('bottom');
                     });
 
-                    // Save gambar
                     $image->save($path.'/'.$filename);
 
-                    // Simpan ke DB
+                    // simpan DB
                     CustomerPhoto::create([
                         'customer_id' => $customer->id,
+                        'customer_other_address_id' => $customer->id.'.'.$customer->count_member,
                         'file' => $filename,
                         'type' => 'store',
                         'gps_latitude' => $request->gps_latitude,
